@@ -1,0 +1,25 @@
+@page "/Image"
+@using System.Net
+@using BlazorApp.Shared
+@inject HttpClient Http
+
+<h3>Image</h3>
+<button @onclick="FetchImage">Fetch Image</button>
+<img src="@imageDataUrl" alt="test"/>
+@code {
+    private string imageDataUrl;
+
+    private async Task FetchImage()
+    {
+        try
+        {
+            var dataBytes = await Http.GetFromJsonAsync<byte[]>("/api/Image");
+            imageDataUrl = $"data:Image/png;base64,{Convert.ToBase64String(dataBytes)}";
+     
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.ToString());
+        }
+    }
+}
