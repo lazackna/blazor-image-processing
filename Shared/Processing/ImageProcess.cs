@@ -1,7 +1,6 @@
 namespace BlazorApp.Shared.Processing
 {
-    public class ImageProcess
+    public interface ImageProcess
     {
-        
     }
 }
