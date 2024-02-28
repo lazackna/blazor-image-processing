@@ -1,25 +1,61 @@
 @page "/Image"
 @using System.Net
+@using System.Net.Http.Headers
 @using BlazorApp.Shared
 @inject HttpClient Http
 
 <h3>Image</h3>
-<button @onclick="FetchImage">Fetch Image</button>
-<img src="@imageDataUrl" alt="test"/>
-@code {
-    private string imageDataUrl;
+@* <button @onclick="FetchImage">Fetch Image</button> *@
+<InputFile OnChange="HandleFileInput"/>
+<button @onclick="ProcessImage"></button>
+<img src="@imageData" alt="test"/>
 
-    private async Task FetchImage()
+@code {
+    private string imageData;
+    private IBrowserFile selectedFile;
+
+    private async Task ProcessImage()
     {
+        var formData = new MultipartFormDataContent();
+
+        var stream = selectedFile.OpenReadStream(selectedFile.Size);
+        formData.Add(new StreamContent(stream), "file", selectedFile.Name);
+
+        HttpResponseMessage response = null;
+        using (var memoryStream = new MemoryStream())
+        {
+            await selectedFile.OpenReadStream().CopyToAsync(memoryStream);
+            var byteContent = new ByteArrayContent(memoryStream.ToArray());
+            byteContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            response = await Http.PostAsync("/api/Image", byteContent);
+        }
+        //post the image
+
+        if (response.IsSuccessStatusCode)
+        {
+            var responseData = await response.Content.ReadAsByteArrayAsync();
+            Console.WriteLine(Convert.ToBase64String(responseData));
+            imageData = $"data:Image/png;base64,{Convert.ToBase64String(responseData)}";
+        }
+        
         try
         {
-            var dataBytes = await Http.GetFromJsonAsync<byte[]>("/api/Image");
-            imageDataUrl = $"data:Image/png;base64,{Convert.ToBase64String(dataBytes)}";
+           // var dataBytes = await Http.GetFromJsonAsync<byte[]>("/api/Image");
+            //imageData = $"data:Image/png;base64,{Convert.ToBase64String(dataBytes)}";
      
         }
         catch (Exception ex)
         {
             Console.WriteLine(ex.ToString());
+        }
+    }
+
+    private async Task HandleFileInput(InputFileChangeEventArgs e)
+    {
+        var file = e.GetMultipleFiles().FirstOrDefault();
+        if (file != null)
+        {
+            selectedFile = file;
         }
     }
 }
