@@ -13,7 +13,7 @@ public class Tests
     [Test]
     public void Test1()
     {
-        ScaleProcess process = new ScaleProcess(100, 100);
+        ResizeProcess process = new ResizeProcess(100, 100);
         string json = JsonConvert.SerializeObject(process,new JsonSerializerSettings 
         { 
             TypeNameHandling = TypeNameHandling.All 

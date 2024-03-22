@@ -1,14 +1,13 @@
-using System;
-using Newtonsoft.Json;
-
 namespace BlazorApp.Shared.Processing
 {
-    public class ScaleProcess : ImageProcess
+    public class GaussianBlurProcess : ImageProcess
     {
         public int width { get; set; }
         public int height { get; set; }
         
-        public ScaleProcess(int width, int height)
+        public int sigmaX { get; set; }
+        
+        public GaussianBlurProcess(int width, int height)
         {
             this.width = width;
             this.height = height;
