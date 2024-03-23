@@ -15,19 +15,139 @@
 <button @onclick="ProcessImage"></button>
 <img src="@imageData" alt="test"/>
 
-<ul>
+<button @onclick="AddProcessOption"> Add option </button>
 
-    @foreach (var item in testList)
+<ul>
+    @for (int i = 0; i < selectedTypes.Count; i++)
     {
-        <li>@item</li>
+        int localI = i;
+        var item = selectedTypes[localI];
+        <li>
+            <ul>
+                <li>
+                    <select @onchange="(e) => HandleSelection(e, localI)">
+                        @foreach (var type in processTypes)
+                        {
+                            <option value="@type.DisplayName">@type.DisplayName</option>
+                        }
+                    </select>
+                </li>
+                @for (var j = 0; j < item.type.values.Count; j++)
+                {
+                    int localJ = j;
+                    <li>
+                        <input type="number" placeholder="@item.type.values[j].name" @onchange="(e) => OnInputChange(e, localI, localJ)" />
+                    </li>
+                }
+            </ul>
+        </li>
     }
-    
 </ul>
+
+@* this is a test *@
+@* <ul> *@
+@* *@
+@*     @foreach (var item in processTypes) *@
+@*     { *@
+@*         <li> *@
+@*             <div> *@
+@*                 @item.DisplayName *@
+@*             </div> *@
+@*             <div> *@
+@*                 @item.type *@
+@*             </div> *@
+@*             @foreach (var itemValue in item.values) *@
+@*             { *@
+@*                 <div> *@
+@*                     @if (itemValue.type == typeof(int)) *@
+@*                     { *@
+@*                         <input type="number" placeholder="@itemValue.name"/> *@
+@*                     } *@
+@*                     else *@
+@*                     { *@
+@*                         <input placeholder="@itemValue.name" type="text"/> *@
+@*                     } *@
+@*                 </div> *@
+@*                 <div> *@
+@*                     @itemValue.type *@
+@*                 </div> *@
+@*             } *@
+@*         </li> *@
+@*     } *@
+@* *@
+@* </ul> *@
 
 @code {
 
-    List<string> testList = new List<string>();
-    
+    public class ProcessType
+    {
+        public string DisplayName { get; set; }
+        public Type type { get; set; }
+
+        public class TypeWithName
+        {
+            public Type type { get; set; }
+            public string name { get; set; }
+
+            public TypeWithName(Type type, string name)
+            {
+                this.type = type;
+                this.name = name;
+            }
+        }
+
+        public List<TypeWithName> values { get; set; }
+
+        public ProcessType(string displayName, Type type)
+        {
+            DisplayName = displayName;
+            this.type = type;
+
+            values = new List<TypeWithName>();
+
+            foreach (var fieldInfo in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                values.Add(new TypeWithName(fieldInfo.PropertyType, fieldInfo.Name));
+            }
+        }
+    }
+
+    public class ProcessTypeData
+    {
+        public ProcessType type { get; set; }
+        public object[] data { get; set; }
+
+        public ProcessTypeData(ProcessType type)
+        {
+            this.type = type;
+            var properties = type.type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            object[] typeDefaults = new object[properties.Length];
+
+            for (var i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+
+                if (property.PropertyType == typeof(int))
+                {
+                    typeDefaults[i] = 0;
+                }
+                else if (property.PropertyType == typeof(string))
+                {
+                    typeDefaults[i] = "";
+                }
+            }
+
+            data = typeDefaults;
+        }
+    }
+
+    //These are our received options
+    List<ProcessType> processTypes = new List<ProcessType>();
+
+    //These are our currently added options to send
+    List<ProcessTypeData> selectedTypes = new List<ProcessTypeData>();
+
     private string imageData;
     private IBrowserFile selectedFile;
 
@@ -44,43 +164,44 @@
         foreach (var typeString in response)
         {
             Type type = await getTypeByName(typeString);
-            Type t = typeof(ResizeProcess);
 
             Console.WriteLine(type.Name);
             foreach (var fieldInfo in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 Console.WriteLine(fieldInfo.PropertyType + " " + fieldInfo.Name);
             }
-            
-            testList.Add(typeString);
-            
+
+            ProcessType processType = new ProcessType(type.Name, type);
+            processTypes.Add(processType);
             Console.WriteLine();
         }
     }
 
-
-    private async void CreateOptions()
+    private List<ImageProcess> CreateProcessListFromSelected()
     {
-        var response = await Http.GetFromJsonAsync<List<string>>("/api/ImageInfo");
-
-        foreach (var typeString in response)
+        List<ImageProcess> processes = new List<ImageProcess>();
+        for (var i = 0; i < selectedTypes.Count; i++)
         {
-            Type type = await getTypeByName(typeString);
-            Type t = typeof(ResizeProcess);
+            var selectedType = selectedTypes[i];
 
-            Console.WriteLine(type.Name);
-            foreach (var fieldInfo in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            try
             {
-                Console.WriteLine(fieldInfo.PropertyType + " " + fieldInfo.Name);
+                var instance = Activator.CreateInstance(selectedType.type.type, selectedType.data);
+                if (instance != null && instance is ImageProcess process)
+                    processes.Add(process);
             }
-
-            Console.WriteLine();
+            catch (MissingMethodException e)
+            {
+                Console.Error.WriteLine(e.Message);
+            }
+            
         }
+
+        return processes;
     }
-    
+
     private async Task ProcessImage()
     {
-        CreateOptions();
         var formData = new MultipartFormDataContent();
 
         var stream = selectedFile.OpenReadStream(selectedFile.Size);
@@ -93,33 +214,22 @@
 
             var processRequest = new ImageProcessingRequest();
             processRequest.base64ImageData = Convert.ToBase64String(memoryStream.ToArray());
-            
-            processRequest.Processes.Add(new ResizeProcess(100,100));
-            
-            string json = JsonConvert.SerializeObject(processRequest, Formatting.Indented, new JsonSerializerSettings 
-            { 
-                TypeNameHandling = TypeNameHandling.All 
+
+            processRequest.Processes = CreateProcessListFromSelected();
+
+            string json = JsonConvert.SerializeObject(processRequest, Formatting.Indented, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.All
             });
             response = await Http.PostAsync("/api/Image", new StringContent(json, Encoding.UTF8, "application/json"));
         }
-        //post the image
+    //post the image
 
         if (response.IsSuccessStatusCode)
         {
             var responseData = await response.Content.ReadAsByteArrayAsync();
-            //Console.WriteLine(Convert.ToBase64String(responseData));
+    //Console.WriteLine(Convert.ToBase64String(responseData));
             imageData = $"data:Image/png;base64,{Convert.ToBase64String(responseData)}";
-        }
-        
-        try
-        {
-           // var dataBytes = await Http.GetFromJsonAsync<byte[]>("/api/Image");
-            //imageData = $"data:Image/png;base64,{Convert.ToBase64String(dataBytes)}";
-     
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.ToString());
         }
     }
 
@@ -131,4 +241,38 @@
             selectedFile = file;
         }
     }
+
+    private void AddProcessOption(MouseEventArgs obj)
+    {
+        var item = new ProcessTypeData(processTypes[0]);
+        selectedTypes.Add(item);
+    }
+
+    private void HandleSelection(ChangeEventArgs obj, int index)
+    {
+        foreach (var processType in processTypes)
+        {
+            if (processType.DisplayName == obj.Value as string)
+            {
+    //found type.
+                Type type = processType.type;
+
+                var item = new ProcessTypeData(processType);
+                selectedTypes[index] = item;
+            }
+        }
+    }
+
+    private void OnInputChange(ChangeEventArgs obj, int optionIndex, int dataIndex)
+    {
+        if (obj.Value == null)
+        {
+            return;
+        }
+        
+        var selectedType = selectedTypes[optionIndex];
+
+        selectedType.data[dataIndex] = Convert.ChangeType(obj.Value, selectedType.type.values[dataIndex].type)  ;
+    }
+
 }

@@ -7,10 +7,11 @@ namespace BlazorApp.Shared.Processing
         
         public int sigmaX { get; set; }
         
-        public GaussianBlurProcess(int width, int height)
+        public GaussianBlurProcess(int width, int height, int sigmaX)
         {
             this.width = width;
             this.height = height;
+            this.sigmaX = sigmaX;
         }
     }
 }
