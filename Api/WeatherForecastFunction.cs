@@ -26,6 +26,8 @@ namespace Api
 
         private List<string> _processes = new List<string>();
 
+        private Dictionary<Type, MethodInfo> typeToMethodBindings = new Dictionary<Type, MethodInfo>();
+
         private void GenerateFunctionBindings()
         {
             var methods = typeof(ImageProcessHandler).GetMethods();
@@ -38,32 +40,26 @@ namespace Api
                     continue;
                 }
 
-                _processes.Add(methodInfo.GetParameters()[0].ParameterType.FullName);
+                var parameterInfo = methodInfo.GetParameters()[0];
+                typeToMethodBindings.Add(parameterInfo.ParameterType, methodInfo);
+                
+                _processes.Add(parameterInfo.ParameterType.FullName);
                 Console.WriteLine(_processes[^1]);
             }
         }
 
-        // private object[] ConvertImageProcessToObjects(ImageProcess process)
-        // {
-        //     Type type = process.GetType();
-        //     PropertyInfo[] properties =
-        //         type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.FlattenHierarchy);
-        //
-        //     object[] propertyValues = new object[properties.Length];
-        //     for (int i = 0; i < properties.Length; i++)
-        //     {
-        //         propertyValues[i] = properties[i].GetValue(process);
-        //         Console.WriteLine(propertyValues[i]);
-        //     }
-        //
-        //
-        //     return propertyValues;
-        // }
-
-        private void processImage(ImageProcessingRequest request, Mat mat)
+        private void ProcessImage(ImageProcessingRequest request, Mat mat)
         {
+            
+            
             foreach (var imageProcess in request.Processes)
             {
+                if(typeToMethodBindings.TryGetValue(imageProcess.GetType(), out MethodInfo methodInfo))
+                {
+                    methodInfo.Invoke(null, new object[]{imageProcess, mat});
+                }
+                
+                continue;
                 if (imageProcess is ResizeProcess scaleProcess)
                 {
                     ImageProcessHandler.Resize(scaleProcess, mat);
@@ -98,17 +94,6 @@ namespace Api
             [HttpTrigger(AuthorizationLevel.Function, "post")]
             HttpRequestData req)
         {
-            // foreach (var (key, value) in req.Headers)
-            // {
-            //     Console.Write(key + ": ");
-            //     foreach (var s in value)
-            //     {
-            //         Console.Write(" " + s);
-            //     }
-            //
-            //     Console.WriteLine();
-            // }
-
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             var imageProcessingRequest = JsonConvert.DeserializeObject<ImageProcessingRequest>(requestBody,
                 new JsonSerializerSettings
@@ -116,7 +101,7 @@ namespace Api
                     TypeNameHandling = TypeNameHandling.All
                 });
             byte[] imageData = Convert.FromBase64String(imageProcessingRequest.base64ImageData);
-            //Console.WriteLine(requestBody);
+            Console.WriteLine(requestBody);
             // Decode the image data using OpenCV
             using (Mat mat = Mat.FromImageData(imageData, ImreadModes.Color))
             {
@@ -126,7 +111,7 @@ namespace Api
                 }
 
 
-                processImage(imageProcessingRequest, mat);
+                ProcessImage(imageProcessingRequest, mat);
 
                 var response = req.CreateResponse(HttpStatusCode.OK);
                 byte[] buf;

@@ -4,9 +4,11 @@
 @using System.Reflection
 @using System.Text
 @using System.Text.Json.Serialization
+@using System.Xml.XPath
 @using BlazorApp.Shared
 @using BlazorApp.Shared.Processing
 @using Newtonsoft.Json
+@using System.Dynamic
 @inject HttpClient Http
 
 <h3>Image</h3>
@@ -35,8 +37,10 @@
                 @for (var j = 0; j < item.type.values.Count; j++)
                 {
                     int localJ = j;
+                    
                     <li>
-                        <input type="number" placeholder="@item.type.values[j].name" @onchange="(e) => OnInputChange(e, localI, localJ)" />
+                        <input type="number" placeholder="@item.type.values[j].name" @bind="@item.data[j]" @onchange="(e) => OnInputChange(e, localI, localJ)"/>
+                        @* <input type="number" placeholder="@item.type.values[j].name" @bind=""/> *@
                     </li>
                 }
             </ul>
@@ -194,7 +198,6 @@
             {
                 Console.Error.WriteLine(e.Message);
             }
-            
         }
 
         return processes;
@@ -246,6 +249,7 @@
     {
         var item = new ProcessTypeData(processTypes[0]);
         selectedTypes.Add(item);
+        StateHasChanged();
     }
 
     private void HandleSelection(ChangeEventArgs obj, int index)
@@ -259,6 +263,7 @@
 
                 var item = new ProcessTypeData(processType);
                 selectedTypes[index] = item;
+                StateHasChanged();
             }
         }
     }
@@ -269,10 +274,12 @@
         {
             return;
         }
-        
+
         var selectedType = selectedTypes[optionIndex];
 
-        selectedType.data[dataIndex] = Convert.ChangeType(obj.Value, selectedType.type.values[dataIndex].type)  ;
+        selectedType.data[dataIndex] = Convert.ChangeType(obj.Value, selectedType.type.values[dataIndex].type);
+        StateHasChanged();
     }
 
 }
+

@@ -7,6 +7,7 @@ public class ImageProcessHandler
 {
     public static void Resize(ResizeProcess process, Mat mat)
     {
+        Console.WriteLine(process.width + " | " + process.height);
         Cv2.Resize(mat, mat, new Size(process.width, process.height));
     }
 
@@ -24,5 +25,10 @@ public class ImageProcessHandler
     {
         Cv2.GaussianBlur(mat, mat, new Size(process.width, process.height),
             process.sigmaX);
+    }
+
+    public static void InvertProcess(InvertProcess process, Mat mat)
+    {
+        Cv2.Invert(mat, mat);
     }
 }
