@@ -11,22 +11,66 @@
 @using System.Dynamic
 @inject HttpClient Http
 
+<style>
+    horizontal-list {
+        list-style-type: none;
+        display: flex;
+        /*padding: 0px;*/
+        /*margin: 0px;*/
+    }
+    
+    vertical-list {
+        list-style-type: none;
+        display: flex;
+        /*padding: 0px;*/
+        /*margin: 0px;*/
+    }
+    
+    ul {
+        list-style: none;
+        /*padding: 10px;*/
+        /*margin: 10px;*/
+    }
+    
+    li {
+        /*list-style: none;*/
+        /*padding: 0px;*/
+        /*margin: 0px;*/
+    }
+    
+    nav ul {
+    list-style: none; /* Remove list dots */
+    /*margin: 10px;*/
+    /*padding: 10px;*/
+    }
+    
+</style>
+
 <h3>Image</h3>
 @* <button @onclick="FetchImage">Fetch Image</button> *@
-<InputFile OnChange="HandleFileInput"/>
-<button @onclick="ProcessImage"></button>
-<img src="@imageData" alt="test"/>
-
-<button @onclick="AddProcessOption"> Add option </button>
-
 <ul>
+    <li style="padding-bottom: 5px">
+        <img src="@imageData" alt=""/>
+    </li>
+    <li style="padding-bottom: 5px">
+        <InputFile OnChange="HandleFileInput"/>
+    </li>
+    <li style="padding-bottom: 5px">
+        <button @onclick="AddProcessOption"> Add option </button>
+    </li>
+    <li>
+        <button @onclick="ProcessImage">Send Image to Process</button>
+    </li>
+</ul>
+
+<ul class="vertical-list">
     @for (int i = 0; i < selectedTypes.Count; i++)
     {
         int localI = i;
         var item = selectedTypes[localI];
-        <li>
-            <ul>
-                <li>
+        <li class="vertical-list" style="padding-bottom: 10px">
+            <ul class="vertical-list">
+                <li class="vertical-list">
                     <select @onchange="(e) => HandleSelection(e, localI)">
                         @foreach (var type in processTypes)
                         {
@@ -37,49 +81,47 @@
                 @for (var j = 0; j < item.type.values.Count; j++)
                 {
                     int localJ = j;
-                    
-                    <li>
-                        <input type="number" placeholder="@item.type.values[j].name" @bind="@item.data[j]" @onchange="(e) => OnInputChange(e, localI, localJ)"/>
-                        @* <input type="number" placeholder="@item.type.values[j].name" @bind=""/> *@
-                    </li>
+
+                    if (item.type.values[j].type == typeof(ImageKernel))
+                    {
+                        //Vertical
+                        // 1 2 3
+                        // 4 5 6
+                        // 7 8 9
+                        ImageKernel localKernel = new ImageKernel(3, 3);
+                        <li class="horizontal-list">
+                            <ul class="vertical-list">
+                                @for (int k = 0; k < 3; k++)
+                                {
+                                    int localK = k;
+                                    //x so horizontal
+                                    <li class="horizontal-list">
+                                        @for (int l = 0; l < 3; l++)
+                                        {
+                                            int localL = l;
+                                            @if (selectedTypes[localI].data[localJ] == null)
+                                            {
+                                                selectedTypes[localI].data[localJ] = localKernel;
+                                            }
+
+                                            <input value="@localKernel.getData(localL, localK)" @onchange="(e) => OnKernelInputChange(e, ref localKernel, localL, localK, localI, localJ)"/>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </li>
+                    }
+                    else
+                    {
+                        <li>
+                            <input type="number" placeholder="@item.type.values[j].name" value="@item.data[j]" @onchange="(e) => OnInputChange(e, localI, localJ)"/>
+                        </li>
+                    }
                 }
             </ul>
         </li>
     }
 </ul>
-
-@* this is a test *@
-@* <ul> *@
-@* *@
-@*     @foreach (var item in processTypes) *@
-@*     { *@
-@*         <li> *@
-@*             <div> *@
-@*                 @item.DisplayName *@
-@*             </div> *@
-@*             <div> *@
-@*                 @item.type *@
-@*             </div> *@
-@*             @foreach (var itemValue in item.values) *@
-@*             { *@
-@*                 <div> *@
-@*                     @if (itemValue.type == typeof(int)) *@
-@*                     { *@
-@*                         <input type="number" placeholder="@itemValue.name"/> *@
-@*                     } *@
-@*                     else *@
-@*                     { *@
-@*                         <input placeholder="@itemValue.name" type="text"/> *@
-@*                     } *@
-@*                 </div> *@
-@*                 <div> *@
-@*                     @itemValue.type *@
-@*                 </div> *@
-@*             } *@
-@*         </li> *@
-@*     } *@
-@* *@
-@* </ul> *@
 
 @code {
 
@@ -205,6 +247,11 @@
 
     private async Task ProcessImage()
     {
+        if (selectedFile == null)
+        {
+            return;
+        }
+        
         var formData = new MultipartFormDataContent();
 
         var stream = selectedFile.OpenReadStream(selectedFile.Size);
@@ -281,5 +328,25 @@
         StateHasChanged();
     }
 
-}
+    private void OnKernelInputChange(ChangeEventArgs obj, ref ImageKernel localKernel, int x, int y, int optionIndex, int dataIndex)
+    {
+        if (obj.Value == null)
+        {
+            return;
+        }
 
+        string stringValue = obj.Value.ToString();
+        if (int.TryParse(stringValue, out int value))
+        {
+            if (selectedTypes[optionIndex].data[dataIndex] == null)
+            {
+                selectedTypes[optionIndex].data[dataIndex] = localKernel;
+            }
+            else
+            {
+                ((ImageKernel)selectedTypes[optionIndex].data[dataIndex]).setData(x, y, value);
+            }
+        }
+    }
+
+}

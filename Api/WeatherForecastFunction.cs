@@ -30,7 +30,7 @@ namespace Api
 
         private void GenerateFunctionBindings()
         {
-            var methods = typeof(ImageProcessHandler).GetMethods();
+            var methods = typeof(ImageProcessHandler).GetMethods(BindingFlags.Public | BindingFlags.Static);
 
             foreach (var methodInfo in methods)
             {
@@ -39,42 +39,29 @@ namespace Api
                 {
                     continue;
                 }
-
                 var parameterInfo = methodInfo.GetParameters()[0];
                 typeToMethodBindings.Add(parameterInfo.ParameterType, methodInfo);
                 
                 _processes.Add(parameterInfo.ParameterType.FullName);
-                Console.WriteLine(_processes[^1]);
+                Console.WriteLine($"Found process {methodInfo.Name} with process type: {parameterInfo.ParameterType.FullName}. Adding to bindings");
             }
         }
 
         private void ProcessImage(ImageProcessingRequest request, Mat mat)
         {
-            
-            
             foreach (var imageProcess in request.Processes)
             {
                 if(typeToMethodBindings.TryGetValue(imageProcess.GetType(), out MethodInfo methodInfo))
                 {
-                    methodInfo.Invoke(null, new object[]{imageProcess, mat});
-                }
-                
-                continue;
-                if (imageProcess is ResizeProcess scaleProcess)
-                {
-                    ImageProcessHandler.Resize(scaleProcess, mat);
-                }
-                else if (imageProcess is BlurProcess blurProcess)
-                {
-                    ImageProcessHandler.Blur(blurProcess, mat);
-                }
-                else if (imageProcess is MedianBlurProcess medianBlurProcess)
-                {
-                    ImageProcessHandler.MedianBlur(medianBlurProcess, mat);
-                }
-                else if (imageProcess is GaussianBlurProcess gaussianBlurProcess)
-                {
-                    ImageProcessHandler.GaussianBlurProcess(gaussianBlurProcess, mat);
+                    try
+                    {
+                        Console.WriteLine($"Executing method: {methodInfo.Name}");
+                        methodInfo.Invoke(null, new object[] { imageProcess, mat });
+                    }
+                    catch (System.Reflection.TargetInvocationException e)
+                    {
+                        Console.WriteLine(e.InnerException?.Message);
+                    }
                 }
             }
         }
@@ -101,7 +88,7 @@ namespace Api
                     TypeNameHandling = TypeNameHandling.All
                 });
             byte[] imageData = Convert.FromBase64String(imageProcessingRequest.base64ImageData);
-            Console.WriteLine(requestBody);
+            //Console.WriteLine(requestBody);
             // Decode the image data using OpenCV
             using (Mat mat = Mat.FromImageData(imageData, ImreadModes.Color))
             {
@@ -109,7 +96,6 @@ namespace Api
                 {
                     return req.CreateResponse(HttpStatusCode.BadRequest);
                 }
-
 
                 ProcessImage(imageProcessingRequest, mat);
 

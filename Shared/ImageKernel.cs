@@ -17,5 +17,15 @@ namespace BlazorApp.Shared
                 }
             }
         }
+
+        public void setData(int x, int y, int value)
+        {
+            Data[x][y] = value;
+        }
+
+        public int getData(int x, int y)
+        {
+            return Data[x][y];
+        }
     }
 }
