@@ -1,0 +1,352 @@
+@page "/Image"
+@using System.Net
+@using System.Net.Http.Headers
+@using System.Reflection
+@using System.Text
+@using System.Text.Json.Serialization
+@using System.Xml.XPath
+@using BlazorApp.Shared
+@using BlazorApp.Shared.Processing
+@using Newtonsoft.Json
+@using System.Dynamic
+@inject HttpClient Http
+
+<style>
+    horizontal-list {
+        list-style-type: none;
+        display: flex;
+        /*padding: 0px;*/
+        /*margin: 0px;*/
+    }
+    
+    vertical-list {
+        list-style-type: none;
+        display: flex;
+        /*padding: 0px;*/
+        /*margin: 0px;*/
+    }
+    
+    ul {
+        list-style: none;
+        /*padding: 10px;*/
+        /*margin: 10px;*/
+    }
+    
+    li {
+        /*list-style: none;*/
+        /*padding: 0px;*/
+        /*margin: 0px;*/
+    }
+    
+    nav ul {
+    list-style: none; /* Remove list dots */
+    /*margin: 10px;*/
+    /*padding: 10px;*/
+    }
+    
+</style>
+
+<h3>Image</h3>
+@* <button @onclick="FetchImage">Fetch Image</button> *@
+<ul>
+    <li style="padding-bottom: 5px">
+        <img src="@imageData" alt=""/>
+    </li>
+    <li style="padding-bottom: 5px">
+        <InputFile OnChange="HandleFileInput"/>
+    </li>
+    <li style="padding-bottom: 5px">
+        <button @onclick="AddProcessOption"> Add option </button>
+    </li>
+    <li>
+        <button @onclick="ProcessImage">Send Image to Process</button>
+    </li>
+</ul>
+
+<ul class="vertical-list">
+    @for (int i = 0; i < selectedTypes.Count; i++)
+    {
+        int localI = i;
+        var item = selectedTypes[localI];
+        <li class="vertical-list" style="padding-bottom: 10px">
+            <ul class="vertical-list">
+                <li class="vertical-list">
+                    <select @onchange="(e) => HandleSelection(e, localI)">
+                        @foreach (var type in processTypes)
+                        {
+                            <option value="@type.DisplayName">@type.DisplayName</option>
+                        }
+                    </select>
+                </li>
+                @for (var j = 0; j < item.type.values.Count; j++)
+                {
+                    int localJ = j;
+
+                    if (item.type.values[j].type == typeof(ImageKernel))
+                    {
+                        //Vertical
+                        // 1 2 3
+                        // 4 5 6
+                        // 7 8 9
+                        ImageKernel localKernel = new ImageKernel(3, 3);
+                        <li class="horizontal-list">
+                            <ul class="vertical-list">
+                                @for (int k = 0; k < 3; k++)
+                                {
+                                    int localK = k;
+                                    //x so horizontal
+                                    <li class="horizontal-list">
+                                        @for (int l = 0; l < 3; l++)
+                                        {
+                                            int localL = l;
+                                            @if (selectedTypes[localI].data[localJ] == null)
+                                            {
+                                                selectedTypes[localI].data[localJ] = localKernel;
+                                            }
+
+                                            <input value="@localKernel.getData(localL, localK)" @onchange="(e) => OnKernelInputChange(e, ref localKernel, localL, localK, localI, localJ)"/>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </li>
+                    }
+                    else
+                    {
+                        <li>
+                            <input type="number" placeholder="@item.type.values[j].name" value="@item.data[j]" @onchange="(e) => OnInputChange(e, localI, localJ)"/>
+                        </li>
+                    }
+                }
+            </ul>
+        </li>
+    }
+</ul>
+
+@code {
+
+    public class ProcessType
+    {
+        public string DisplayName { get; set; }
+        public Type type { get; set; }
+
+        public class TypeWithName
+        {
+            public Type type { get; set; }
+            public string name { get; set; }
+
+            public TypeWithName(Type type, string name)
+            {
+                this.type = type;
+                this.name = name;
+            }
+        }
+
+        public List<TypeWithName> values { get; set; }
+
+        public ProcessType(string displayName, Type type)
+        {
+            DisplayName = displayName;
+            this.type = type;
+
+            values = new List<TypeWithName>();
+
+            foreach (var fieldInfo in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                values.Add(new TypeWithName(fieldInfo.PropertyType, fieldInfo.Name));
+            }
+        }
+    }
+
+    public class ProcessTypeData
+    {
+        public ProcessType type { get; set; }
+        public object[] data { get; set; }
+
+        public ProcessTypeData(ProcessType type)
+        {
+            this.type = type;
+            var properties = type.type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            object[] typeDefaults = new object[properties.Length];
+
+            for (var i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+
+                if (property.PropertyType == typeof(int))
+                {
+                    typeDefaults[i] = 0;
+                }
+                else if (property.PropertyType == typeof(string))
+                {
+                    typeDefaults[i] = "";
+                }
+            }
+
+            data = typeDefaults;
+        }
+    }
+
+    //These are our received options
+    List<ProcessType> processTypes = new List<ProcessType>();
+
+    //These are our currently added options to send
+    List<ProcessTypeData> selectedTypes = new List<ProcessTypeData>();
+
+    private string imageData;
+    private IBrowserFile selectedFile;
+
+    private async Task<Type> getTypeByName(string typeName)
+    {
+        Assembly assembly = Assembly.Load("Shared");
+        return assembly.GetType(typeName);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var response = await Http.GetFromJsonAsync<List<string>>("/api/ImageInfo");
+
+        foreach (var typeString in response)
+        {
+            Type type = await getTypeByName(typeString);
+
+            Console.WriteLine(type.Name);
+            foreach (var fieldInfo in type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                Console.WriteLine(fieldInfo.PropertyType + " " + fieldInfo.Name);
+            }
+
+            ProcessType processType = new ProcessType(type.Name, type);
+            processTypes.Add(processType);
+            Console.WriteLine();
+        }
+    }
+
+    private List<ImageProcess> CreateProcessListFromSelected()
+    {
+        List<ImageProcess> processes = new List<ImageProcess>();
+        for (var i = 0; i < selectedTypes.Count; i++)
+        {
+            var selectedType = selectedTypes[i];
+
+            try
+            {
+                var instance = Activator.CreateInstance(selectedType.type.type, selectedType.data);
+                if (instance != null && instance is ImageProcess process)
+                    processes.Add(process);
+            }
+            catch (MissingMethodException e)
+            {
+                Console.Error.WriteLine(e.Message);
+            }
+        }
+
+        return processes;
+    }
+
+    private async Task ProcessImage()
+    {
+        if (selectedFile == null)
+        {
+            return;
+        }
+        
+        var formData = new MultipartFormDataContent();
+
+        var stream = selectedFile.OpenReadStream(selectedFile.Size);
+        formData.Add(new StreamContent(stream), "file", selectedFile.Name);
+
+        HttpResponseMessage response = null;
+        using (var memoryStream = new MemoryStream())
+        {
+            await selectedFile.OpenReadStream().CopyToAsync(memoryStream);
+
+            var processRequest = new ImageProcessingRequest();
+            processRequest.base64ImageData = Convert.ToBase64String(memoryStream.ToArray());
+
+            processRequest.Processes = CreateProcessListFromSelected();
+
+            string json = JsonConvert.SerializeObject(processRequest, Formatting.Indented, new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.All
+            });
+            response = await Http.PostAsync("/api/Image", new StringContent(json, Encoding.UTF8, "application/json"));
+        }
+    //post the image
+
+        if (response.IsSuccessStatusCode)
+        {
+            var responseData = await response.Content.ReadAsByteArrayAsync();
+    //Console.WriteLine(Convert.ToBase64String(responseData));
+            imageData = $"data:Image/png;base64,{Convert.ToBase64String(responseData)}";
+        }
+    }
+
+    private async Task HandleFileInput(InputFileChangeEventArgs e)
+    {
+        var file = e.GetMultipleFiles().FirstOrDefault();
+        if (file != null)
+        {
+            selectedFile = file;
+        }
+    }
+
+    private void AddProcessOption(MouseEventArgs obj)
+    {
+        var item = new ProcessTypeData(processTypes[0]);
+        selectedTypes.Add(item);
+        StateHasChanged();
+    }
+
+    private void HandleSelection(ChangeEventArgs obj, int index)
+    {
+        foreach (var processType in processTypes)
+        {
+            if (processType.DisplayName == obj.Value as string)
+            {
+    //found type.
+                Type type = processType.type;
+
+                var item = new ProcessTypeData(processType);
+                selectedTypes[index] = item;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void OnInputChange(ChangeEventArgs obj, int optionIndex, int dataIndex)
+    {
+        if (obj.Value == null)
+        {
+            return;
+        }
+
+        var selectedType = selectedTypes[optionIndex];
+
+        selectedType.data[dataIndex] = Convert.ChangeType(obj.Value, selectedType.type.values[dataIndex].type);
+        StateHasChanged();
+    }
+
+    private void OnKernelInputChange(ChangeEventArgs obj, ref ImageKernel localKernel, int x, int y, int optionIndex, int dataIndex)
+    {
+        if (obj.Value == null)
+        {
+            return;
+        }
+
+        string stringValue = obj.Value.ToString();
+        if (int.TryParse(stringValue, out int value))
+        {
+            if (selectedTypes[optionIndex].data[dataIndex] == null)
+            {
+                selectedTypes[optionIndex].data[dataIndex] = localKernel;
+            }
+            else
+            {
+                ((ImageKernel)selectedTypes[optionIndex].data[dataIndex]).setData(x, y, value);
+            }
+        }
+    }
+
+}

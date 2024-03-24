@@ -1,8 +1,16 @@
+using System.Drawing;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Reflection;
+using Azure.Core;
 using BlazorApp.Shared;
+using BlazorApp.Shared.Processing;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using OpenCvSharp;
+using Size = OpenCvSharp.Size;
 
 namespace Api
 {
@@ -13,6 +21,94 @@ namespace Api
         public HttpTrigger(ILoggerFactory loggerFactory)
         {
             _logger = loggerFactory.CreateLogger<HttpTrigger>();
+            GenerateFunctionBindings();
+        }
+
+        private List<string> _processes = new List<string>();
+
+        private Dictionary<Type, MethodInfo> typeToMethodBindings = new Dictionary<Type, MethodInfo>();
+
+        private void GenerateFunctionBindings()
+        {
+            var methods = typeof(ImageProcessHandler).GetMethods(BindingFlags.Public | BindingFlags.Static);
+
+            foreach (var methodInfo in methods)
+            {
+                if (methodInfo.Name == "ToString" || methodInfo.Name == "Equals" || methodInfo.Name == "GetHashCode" ||
+                    methodInfo.Name == "GetType")
+                {
+                    continue;
+                }
+                var parameterInfo = methodInfo.GetParameters()[0];
+                typeToMethodBindings.Add(parameterInfo.ParameterType, methodInfo);
+                
+                _processes.Add(parameterInfo.ParameterType.FullName);
+                Console.WriteLine($"Found process {methodInfo.Name} with process type: {parameterInfo.ParameterType.FullName}. Adding to bindings");
+            }
+        }
+
+        private void ProcessImage(ImageProcessingRequest request, Mat mat)
+        {
+            foreach (var imageProcess in request.Processes)
+            {
+                if(typeToMethodBindings.TryGetValue(imageProcess.GetType(), out MethodInfo methodInfo))
+                {
+                    try
+                    {
+                        Console.WriteLine($"Executing method: {methodInfo.Name}");
+                        methodInfo.Invoke(null, new object[] { imageProcess, mat });
+                    }
+                    catch (System.Reflection.TargetInvocationException e)
+                    {
+                        Console.WriteLine(e.InnerException?.Message);
+                    }
+                }
+            }
+        }
+
+        [Function("ImageInfo")]
+        public async Task<HttpResponseData> ProcessInfoRequest([HttpTrigger(AuthorizationLevel.Anonymous, "get")]
+            HttpRequestData req)
+        {
+            Console.WriteLine("Got Request");
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(_processes);
+            return response;
+        }
+
+        [Function("Image")]
+        public async Task<HttpResponseData> ProcessImageMethod(
+            [HttpTrigger(AuthorizationLevel.Function, "post")]
+            HttpRequestData req)
+        {
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            var imageProcessingRequest = JsonConvert.DeserializeObject<ImageProcessingRequest>(requestBody,
+                new JsonSerializerSettings
+                {
+                    TypeNameHandling = TypeNameHandling.All
+                });
+            byte[] imageData = Convert.FromBase64String(imageProcessingRequest.base64ImageData);
+            //Console.WriteLine(requestBody);
+            // Decode the image data using OpenCV
+            using (Mat mat = Mat.FromImageData(imageData, ImreadModes.Color))
+            {
+                if (mat.Empty())
+                {
+                    return req.CreateResponse(HttpStatusCode.BadRequest);
+                }
+
+                ProcessImage(imageProcessingRequest, mat);
+
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                byte[] buf;
+                Cv2.ImEncode(".png", mat, out buf);
+
+                response.Headers.Add("Content-Type", "application/octet-stream");
+                await response.Body.WriteAsync(buf);
+
+
+                return response;
+            }
         }
 
         [Function("WeatherForecast")]
